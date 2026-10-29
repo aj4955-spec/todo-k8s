@@ -1,0 +1,38 @@
+services:
+  mongo:
+    image: mongo:7.0
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks: [backend]
+
+  web:
+    image: ${IMAGE:-thisisadityajha/todo-flask:v1}
+    build: ./app
+    ports:
+      - "8080:5000"
+    environment:
+      MONGO_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/?authSource=admin
+      MONGO_DB: todo_db
+      APP_VERSION: compose
+      ENABLE_CHAOS: "true"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [backend]
+
+volumes:
+  mongo-data:
+
+networks:
+  backend:
