@@ -50,3 +50,46 @@ Use letters and digits only for the Mongo password.
 ## Runbook
 
 (Each owner adds the commands for their part.)
+## Run locally
+
+```bash
+docker run -d --name todo-mongo -p 27017:27017 mongo:7.0
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r app/requirements.txt
+cd app && FLASK_APP=app python -m flask run --port 5001
+```
+
+Port 5001 is used because macOS AirPlay Receiver occupies port 5000.
+
+## Environment variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MONGO_URI` | `mongodb://localhost:27017` | MongoDB connection string |
+| `MONGO_DB` | `todo_db` | Database name |
+| `APP_VERSION` | `dev` | Shown in the page footer and `/version` |
+| `ENABLE_CHAOS` | `false` | Enables the chaos endpoints below |
+| `LOG_LEVEL` | `INFO` | Python logging level |
+
+## Endpoints added for Kubernetes
+
+| Endpoint | Returns |
+| --- | --- |
+| `GET /healthz` | Liveness. 200 if the process is fine, 500 if `/tmp/unhealthy` exists. Never touches the database. |
+| `GET /readyz` | Readiness. 200 if MongoDB answers a ping, 503 otherwise (within about 2 seconds). |
+| `GET /version` | JSON with the app version and pod name. |
+| `POST /chaos/fail-liveness` | Creates `/tmp/unhealthy` so liveness starts failing. Only when `ENABLE_CHAOS=true`, else 404. |
+| `POST /chaos/recover` | Removes the flag. Only when `ENABLE_CHAOS=true`, else 404. |
+| `GET /metrics` | Prometheus metrics (request counts and latencies). Probe endpoints are excluded. |
+
+## Error handling
+
+| Situation | Response |
+| --- | --- |
+| MongoDB unreachable | 503 friendly page after about 2 seconds (no 30 second hang) |
+| Invalid task id in a URL | 400 |
+| Valid id that doesn't exist | 404 |
+| Empty task name | 400 |
+| Search on an unknown field | 400 |
+| Search text with special characters | Treated as plain text (escaped) |
+| Wrong HTTP method or unknown page | 405 or 404 friendly page |
