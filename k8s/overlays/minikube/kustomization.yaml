@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+images:
+  # Local build until v1 on Docker Hub includes the hardened app; then delete this block
+  - name: thisisadityajha/todo-flask
+    newName: todo-flask
+    newTag: dev
+patches:
+  - target:
+      kind: Service
+      name: todo-app
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30080

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: todo-config
+  labels:
+    part-of: todo
+data:
+  MONGO_DB: todo_db
+  ENABLE_CHAOS: "true"
+  LOG_LEVEL: INFO
