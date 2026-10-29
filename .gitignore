@@ -218,3 +218,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Assignment 2 secrets and local files
+.env
+**/mongo-secret.yaml
+monitoring/alertmanager-slack.yaml
+kubeconfig*
+.venv/
+.DS_Store
