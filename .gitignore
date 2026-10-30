@@ -222,7 +222,6 @@ __marimo__/
 # Assignment 2 secrets and local files
 .env
 **/mongo-secret.yaml
-monitoring/alertmanager-slack.yaml
 kubeconfig*
 .venv/
 .DS_Store
