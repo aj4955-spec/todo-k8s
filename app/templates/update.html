@@ -34,7 +34,7 @@
 
 	<p>
 		<span class="top">Task Name:</span>
-		<input type="text" name="name" value="{{ task['name'] }}" placeholder="{{ task['name'] }}">
+		<input type="text" name="name" value="{{ task['name'] }}" required placeholder="{{ task['name'] }}">
 	</p>
 	<p>
 		<span class="top">Description:</span>
@@ -47,10 +47,10 @@
 	<p>
 		<span class="top">Priority:</span>
 		<select name="pr">
-			<option selected disabled>Priority</option>
-			<option>Low !</option>
-			<option>Medium !!</option>
-			<option>High !!!</option>
+			<option disabled {% if not task['pr'] %}selected{% endif %}>Priority</option>
+			{% for p in ['Low !', 'Medium !!', 'High !!!'] %}
+			<option {% if task['pr'] == p %}selected{% endif %}>{{ p }}</option>
+			{% endfor %}
 		</select>
 	</p>
 	</table>
@@ -58,5 +58,6 @@
 		<button type="submit"> Update Task </button>
 		<br/>
 	</form>
+	<footer style="margin-top:30px;padding:8px 0;border-top:1px solid #ddd;color:#777;font-size:12px;font-family:sans-serif;">Version <b>{{ app_version }}</b> &middot; served by pod <b>{{ pod_name }}</b></footer>
 </body>
 </html>
