@@ -19,6 +19,7 @@ spec:
             description: "{{ $value | humanize }} liveness failures in the last 2 minutes."
         - alert: TodoReadinessProbeFailures
           expr: sum by (namespace, pod) (increase(prober_probe_total{namespace="todo", probe_type="Readiness", result="failed"}[2m])) > 3
+          for: 1m
           labels:
             severity: warning
             team: todo
