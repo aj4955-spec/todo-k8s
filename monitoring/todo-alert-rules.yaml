@@ -59,8 +59,9 @@ spec:
             summary: "New pod {{ $labels.pod }} started"
             description: "A pod was created in the last 2 minutes (replacement, scale up, or rollout)."
         - alert: TodoMongoDown
-          expr: kube_deployment_status_replicas_available{namespace="todo", deployment="mongo"} < 1
+          expr: max by (namespace, deployment) (kube_deployment_status_replicas_available{namespace="todo", deployment="mongo"}) < 1
           for: 30s
+          keep_firing_for: 3m
           labels:
             severity: critical
             team: todo
