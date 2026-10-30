@@ -17,8 +17,8 @@ addons:
     wellKnownPolicies:
       ebsCSIController: true
 managedNodeGroups:
-  - name: ng-1
-    instanceType: t3.medium
+  - name: ng-2
+    instanceType: m7i-flex.large
     desiredCapacity: 2
     minSize: 2
     maxSize: 3

@@ -1,0 +1,11 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: todo-eks
+  region: us-east-1
+iam:
+  withOIDC: true
+addons:
+  - name: aws-ebs-csi-driver
+    wellKnownPolicies:
+      ebsCSIController: true
