@@ -1,0 +1,78 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: todo-alerts
+  namespace: monitoring
+  labels:
+    release: mon
+spec:
+  groups:
+    - name: todo.rules
+      rules:
+        - alert: TodoLivenessProbeFailures
+          expr: sum by (namespace, pod) (increase(prober_probe_total{namespace="todo", probe_type="Liveness", result="failed"}[2m])) > 2
+          labels:
+            severity: critical
+            team: todo
+          annotations:
+            summary: "Liveness probe failing on {{ $labels.pod }}"
+            description: "{{ $value | humanize }} liveness failures in the last 2 minutes."
+        - alert: TodoReadinessProbeFailures
+          expr: sum by (namespace, pod) (increase(prober_probe_total{namespace="todo", probe_type="Readiness", result="failed"}[2m])) > 3
+          labels:
+            severity: warning
+            team: todo
+          annotations:
+            summary: "Readiness probe failing on {{ $labels.pod }}"
+            description: "Pod is out of the load balancer: {{ $value | humanize }} failures in 2 minutes."
+        - alert: TodoContainerRestarted
+          expr: increase(kube_pod_container_status_restarts_total{namespace="todo"}[5m]) > 0
+          labels:
+            severity: warning
+            team: todo
+          annotations:
+            summary: "Container {{ $labels.container }} in {{ $labels.pod }} restarted"
+            description: "{{ $value | humanize }} restarts in the last 5 minutes."
+        - alert: TodoCrashLooping
+          expr: max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{namespace="todo", reason="CrashLoopBackOff"}) == 1
+          for: 1m
+          labels:
+            severity: critical
+            team: todo
+          annotations:
+            summary: "{{ $labels.pod }} is in CrashLoopBackOff"
+            description: "Check kubectl logs --previous for {{ $labels.pod }}."
+        - alert: TodoReplicasMismatch
+          expr: kube_deployment_spec_replicas{namespace="todo"} != kube_deployment_status_replicas_available{namespace="todo"}
+          labels:
+            severity: warning
+            team: todo
+          annotations:
+            summary: "Deployment {{ $labels.deployment }} has unavailable replicas"
+            description: "Desired and available replica counts differ (pod deleted, crashing, or rolling out)."
+        - alert: TodoNewPodStarted
+          expr: (time() - kube_pod_start_time{namespace="todo"}) < 120
+          labels:
+            severity: info
+            team: todo
+          annotations:
+            summary: "New pod {{ $labels.pod }} started"
+            description: "A pod was created in the last 2 minutes (replacement, scale up, or rollout)."
+        - alert: TodoMongoDown
+          expr: kube_deployment_status_replicas_available{namespace="todo", deployment="mongo"} < 1
+          for: 30s
+          labels:
+            severity: critical
+            team: todo
+          annotations:
+            summary: "MongoDB has no available replica"
+            description: "The To Do app cannot serve requests until MongoDB is back."
+        - alert: TodoHigh5xxRate
+          expr: sum(rate(flask_http_request_total{namespace="todo", status=~"5.."}[2m])) / clamp_min(sum(rate(flask_http_request_total{namespace="todo"}[2m])), 0.001) > 0.2
+          for: 1m
+          labels:
+            severity: warning
+            team: todo
+          annotations:
+            summary: "More than 20 percent of To Do requests are failing"
+            description: "5xx ratio is {{ $value | humanizePercentage }}."
