@@ -31,7 +31,7 @@ alertmanager:
             title: '[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}'
             text: |-
               {{ range .Alerts }}*Severity:* {{ .Labels.severity }}
-              *Pod:* {{ .Labels.pod }}
+              {{ if .Labels.pod }}*Pod:* {{ .Labels.pod }}{{ else if .Labels.deployment }}*Deployment:* {{ .Labels.deployment }}{{ end }}
               *Summary:* {{ .Annotations.summary }}
               *Details:* {{ .Annotations.description }}
               {{ end }}

@@ -43,7 +43,7 @@ spec:
             summary: "{{ $labels.pod }} is in CrashLoopBackOff"
             description: "Check kubectl logs --previous for {{ $labels.pod }}."
         - alert: TodoReplicasMismatch
-          expr: kube_deployment_spec_replicas{namespace="todo"} != kube_deployment_status_replicas_available{namespace="todo"}
+          expr: max by (namespace, deployment) (kube_deployment_spec_replicas{namespace="todo"}) != max by (namespace, deployment) (kube_deployment_status_replicas_available{namespace="todo"})
           labels:
             severity: warning
             team: todo
