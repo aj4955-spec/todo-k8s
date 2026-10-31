@@ -1,67 +1,97 @@
 # todo-k8s
 
-Cloud Computing and Big Data Systems (CS-GY 9223), Fall 2026, Assignment 2.
-Flask + MongoDB To Do app on Docker, Compose, Minikube and AWS EKS, with probes,
-rolling updates, and Prometheus to Slack alerting.
+CS-GY 9223 Cloud Computing and Big Data Systems, Fall 2026, Assignment 2.
+A Flask and MongoDB To Do app, containerized with Docker, run with Docker Compose,
+deployed on Minikube and AWS EKS, with health probes, rolling updates, and
+Prometheus alerts sent to Slack.
 
-Team: Aditya Jha, Pragya Awasthi
+Team: Aditya Jha (aj4955), Pragya Awasthi (pa2755)
 
-## Shared contract (frozen, do not rename without telling the other person)
+The full write-up, with screenshots and every command used, is in
+[`docs/Cloud_Assignment_2_Report.pdf`](docs/Cloud_Assignment_2_Report.pdf).
 
-| Item | Value |
-|---|---|
-| Image | `thisisadityajha/todo-flask` |
-| Tags | `v1` baseline, `v2` visible change, `v3-broken` crashes on start. Never deploy `latest`. Never overwrite a pushed tag. |
-| App port | 5000 inside the container |
-| Service port | 80 (NodePort 30080 on Minikube, LoadBalancer on EKS) |
-| Namespace | `todo` |
-| Labels | `app: todo-app` (Flask), `app: mongo` (MongoDB), both with `part-of: todo` |
-| App env vars | `MONGO_URI`, `MONGO_DB` (default `todo_db`), `APP_VERSION`, `ENABLE_CHAOS`, `LOG_LEVEL` |
-| Mongo env vars | `MONGO_INITDB_ROOT_USERNAME`, `MONGO_INITDB_ROOT_PASSWORD` from Secret `mongo-credentials` |
-| Endpoints | `/healthz` liveness, `/readyz` readiness, `/version`, `/metrics`, `POST /chaos/fail-liveness`, `POST /chaos/recover` |
-| Mongo image | `mongo:7.0` (fallback `mongo:4.4` if the CPU lacks AVX) |
-| Mongo service | `mongo`, port 27017 |
-| Branches | `pragya/<topic>`, `aditya/<topic>`, merge to `main` by reviewed PR |
-| AWS | account 466558794910, region `us-east-1` |
-| Slack | workspace `cloud-a2-todo`, private channel `#k8s-alerts` |
+## Repository layout
 
-## Repo layout
+| Path | Contents |
+| --- | --- |
+| `app/` | Flask app, `Dockerfile`, `.dockerignore`, `requirements.txt` |
+| `docker-compose.yml`, `.env.example` | Local run with Flask and MongoDB containers and a named volume |
+| `k8s/base/` | Namespace, ConfigMap, Secret template, MongoDB PVC, Deployment and Service, app Deployment and Service, Kustomize base |
+| `k8s/overlays/minikube/` | Exposes the app Service as NodePort 30080 |
+| `k8s/overlays/eks/` | Exposes the app Service as a LoadBalancer and stores MongoDB data on a gp3 EBS volume |
+| `eks/` | eksctl cluster config and EBS CSI driver add-on |
+| `monitoring/` | Helm values, ServiceMonitor, alert rules, Alertmanager routing to Slack |
+| `docs/` | Report |
 
-| Folder | Contents |
-|---|---|
-| `app/` | Flask app, Dockerfile, .dockerignore, requirements.txt |
-| `k8s/base/` | Namespace, ConfigMap, Mongo PVC, Deployment and Service, app Deployment and Service |
-| `k8s/overlays/` | `minikube` (NodePort) and `eks` (LoadBalancer, gp3) |
-| `k8s/optional/` | ReplicationController example |
-| `eks/` | eksctl cluster config |
-| `monitoring/` | Helm values, ServiceMonitor, PrometheusRule, Alertmanager config |
-| `scripts/chaos/` | Failure test helpers |
-| `docs/` | Report and screenshots |
+## Image
 
-## Secrets
+`thisisadityajha/todo-flask` on Docker Hub, built for `linux/amd64` and `linux/arm64`.
 
-Never commit `.env`, `mongo-secret.yaml`, `alertmanager-slack.yaml`, tokens or webhook URLs.
-Use letters and digits only for the Mongo password.
+| Tag | Contents |
+| --- | --- |
+| `v1` | First release |
+| `v2` | Same code, `APP_VERSION=v2`; target of the rolling update |
+| `v3-broken` | Imports a missing module and crashes on start; used for failure tests |
 
-## Endpoints
-
-(Filled in by Pragya in P1.)
-
-## Runbook
-
-(Each owner adds the commands for their part.)
-## Run locally
+## Run with Docker Compose
 
 ```bash
-docker run -d --name todo-mongo -p 27017:27017 mongo:7.0
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r app/requirements.txt
-cd app && FLASK_APP=app python -m flask run --port 5001
+cp .env.example .env            # set MONGO_USER and MONGO_PASSWORD (letters and digits only)
+docker compose up -d --build
+open http://localhost:8080      # host port 8080, because macOS uses 5000 for AirPlay
+docker compose down             # add -v to also delete the data volume
 ```
 
-Port 5001 is used because macOS AirPlay Receiver occupies port 5000.
+## Deploy on Minikube
 
-## Environment variables
+```bash
+minikube start --driver=docker --cpus=4 --memory=8192
+kubectl apply -f k8s/base/namespace.yaml
+kubectl create secret generic mongo-credentials -n todo \
+  --from-literal=MONGO_USER=<user> --from-literal=MONGO_PASSWORD=<password>
+kubectl apply -k k8s/overlays/minikube
+minikube service todo-app -n todo --url
+```
+
+## Deploy on AWS EKS
+
+```bash
+eksctl create cluster -f eks/cluster.yaml
+aws eks update-kubeconfig --name todo-eks --region us-east-1
+eksctl create addon -f eks/addon-ebs.yaml
+kubectl apply -f k8s/base/namespace.yaml
+kubectl create secret generic mongo-credentials -n todo \
+  --from-literal=MONGO_USER=<user> --from-literal=MONGO_PASSWORD=<password>
+kubectl apply -k k8s/overlays/eks
+kubectl -n todo get svc todo-app        # EXTERNAL-IP is the load balancer address
+```
+
+Tear down in this order so the load balancer and EBS volume are removed too:
+
+```bash
+kubectl delete -k k8s/overlays/eks
+eksctl delete cluster -f eks/cluster.yaml --wait
+```
+
+The node group uses `m7i-flex.large` because AWS free plan accounts can only launch
+free tier eligible instance types.
+
+## Monitoring and Slack alerts
+
+```bash
+kubectl create namespace monitoring
+kubectl create secret generic alertmanager-slack -n monitoring --from-literal=url="$SLACK_WEBHOOK_URL"
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm upgrade --install mon prometheus-community/kube-prometheus-stack -n monitoring \
+  -f monitoring/values.yaml -f monitoring/alertmanager-slack.yaml
+kubectl apply -f monitoring/todo-servicemonitor.yaml -f monitoring/todo-alert-rules.yaml
+```
+
+Always pass both values files to `helm upgrade`; leaving one out resets its settings.
+Only alerts labelled `team: todo` reach Slack, and `TodoMongoDown` suppresses the
+readiness alerts it causes.
+
+## App configuration
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -75,21 +105,28 @@ Port 5001 is used because macOS AirPlay Receiver occupies port 5000.
 
 | Endpoint | Returns |
 | --- | --- |
-| `GET /healthz` | Liveness. 200 if the process is fine, 500 if `/tmp/unhealthy` exists. Never touches the database. |
-| `GET /readyz` | Readiness. 200 if MongoDB answers a ping, 503 otherwise (within about 2 seconds). |
+| `GET /healthz` | Liveness: 200, or 500 if `/tmp/unhealthy` exists. Never touches the database. |
+| `GET /readyz` | Readiness: 200 if MongoDB answers a ping, 503 otherwise (within about 2 seconds). |
 | `GET /version` | JSON with the app version and pod name. |
-| `POST /chaos/fail-liveness` | Creates `/tmp/unhealthy` so liveness starts failing. Only when `ENABLE_CHAOS=true`, else 404. |
-| `POST /chaos/recover` | Removes the flag. Only when `ENABLE_CHAOS=true`, else 404. |
-| `GET /metrics` | Prometheus metrics (request counts and latencies). Probe endpoints are excluded. |
+| `GET /metrics` | Prometheus metrics. Probe endpoints are excluded. |
+| `POST /chaos/fail-liveness` | Creates `/tmp/unhealthy` so liveness fails. Only when `ENABLE_CHAOS=true`, otherwise 404. |
+| `POST /chaos/recover` | Removes the flag. Only when `ENABLE_CHAOS=true`, otherwise 404. |
 
 ## Error handling
 
 | Situation | Response |
 | --- | --- |
-| MongoDB unreachable | 503 friendly page after about 2 seconds (no 30 second hang) |
-| Invalid task id in a URL | 400 |
-| Valid id that doesn't exist | 404 |
+| MongoDB unreachable | Friendly 503 page after about 2 seconds |
+| Invalid task id | 400 |
+| Valid id that does not exist | 404 |
 | Empty task name | 400 |
 | Search on an unknown field | 400 |
-| Search text with special characters | Treated as plain text (escaped) |
-| Wrong HTTP method or unknown page | 405 or 404 friendly page |
+| Search text with special characters | Treated as plain text |
+| Wrong HTTP method or unknown page | Friendly 405 or 404 page |
+
+## Secrets
+
+Credentials never go in Git. `.env` is gitignored, the MongoDB password is created
+with `kubectl create secret`, and the Slack webhook lives only in the
+`alertmanager-slack` Secret, which `monitoring/alertmanager-slack.yaml` references
+by file path.
